@@ -14,7 +14,7 @@ heartbeat dw    0
 s1T     db  0x0C, 0x05, 0x03, 0x04,0x0C,0x07,0x0C,0x0C,0x0C, 0x0C, 0x0B
 
 ;S2 Transitions
-s2T     db  0x01, 0x02, 0x0C, 0x0C,0x0C,0x0C,0x0C,0x0C,0x0A, 0x00, 0x0C
+s2T     db  0x01, 0x02, 0x01, 0x0C,0x0C,0x0C,0x0C,0x0C,0x0A, 0x00, 0x0C
 
 ; Digits    0     1     2     3     4     5     6     7     8     9
 digitH  db 0xFC, 0x60, 0xDB, 0xF3, 0x67, 0xB7, 0xBF, 0xE0, 0xFF, 0xF7
@@ -87,12 +87,10 @@ main:   NOP                             ; main program
         mov     #0,R13                  ; Represents the state
         mov     #0,R14                   ; Represents odd or even
         mov     #0,R15 
-        CALL #displayOption
+        call    #displayOption
+
 activateInterrupt:
         bic.b   #06h, &P1IFG            ; To erase a flag raised before
-                                        ; activating the GIE. This help to
-                                        ; avoid responding to a push on button
-                                        ; previous to program start.
 
         NOP                             ; NOP before setting GIE required by
                                         ; the architecture
@@ -112,6 +110,7 @@ TIMER_A1_ISR:   ; Second timer that displays the heart afeter 0.2 seconds
         bic.b   #00000100B,&0x0A22
         mov     #TASSEL_2+MC_0+ID_3, &TA1CTL
         nop
+        bic.b   #06h,&P1IFG
         reti
 TIMER_A0_ISR: ; This timer works for looping the battery cells
         cmp     #6,R13
@@ -124,6 +123,7 @@ oddBattery:
         bis.b   battery(R15), &0x0A31
         inc     R13
         inc     R14
+        bic.b   #06h,&P1IFG
         reti
 
 evenBattery:
@@ -131,6 +131,7 @@ evenBattery:
         inc     R13
         dec     R14
         inc     R15
+        bic.b   #06h,&P1IFG
         reti
 
 startTimerA0:
@@ -141,6 +142,7 @@ startTimerA0:
 stopTimerA0:
         mov     #TASSEL_2+MC_0+ID_3, &TA0CTL
         nop
+        bic.b   #06h,&P1IFG
         reti
         
 turnOnHeart:                            ; Subroutine for starting/stoping timer
@@ -156,7 +158,6 @@ turnOnHeart:                            ; Subroutine for starting/stoping timer
 PORT1_ISR:                              ; ISR to activate timer 0 or timer 1
         CALL    #delay
         mov.b   &P1IFG,R7               ; Record the button that was pressed
-        bic.b   #06h,&P1IFG            ; Reset interrupt flag for s1 and s2
         bit.b   #2, R7                  ; If button is s1
         jnz     transitionS1             ; Start timer 0
         bit.b   #4, R7                  ; If button is s2
@@ -200,6 +201,8 @@ nextState:
         JEQ S10
         cmp #11, R6
         JEQ S11
+        bic.b   #06h,&P1IFG
+        reti
         
         
 // Objetivo: 
@@ -210,30 +213,38 @@ nextState:
 S0:
   MOV #0, R5
   CALL #displayOption
+  bic.b   #06h,&P1IFG
   reti
 S1:
   MOV #1, R5
   CALL #displayRead
+  bic.b   #06h,&P1IFG
   reti
 S2:
   MOV #2, R5
   CALL #displayLog
+  bic.b   #06h,&P1IFG
   reti
 S3:
   MOV #3, R5
+  bic.b   #06h,&P1IFG
   reti
 S4:
   MOV #4, R5
+  bic.b   #06h,&P1IFG
   reti
 S5:
 s5Setup:
+  mov     #2,&LCDCMEMCTL          ; Clear LCD memory
   CALL  #edgeOfBattery
   MOV   #0, heartbeat
 s5Main:
   MOV #5, R5
+  bic.b   #06h,&P1IFG
   reti
 S6:
   MOV #6, R5
+  bic.b   #06h,&P1IFG
   reti
 S7:
   MOV   #7, R5
@@ -249,15 +260,19 @@ s7StartBatteryCount:
   
 S8:
   MOV #8, R5
+  bic.b   #06h,&P1IFG
   reti
 S9:
   MOV #9, R5
+  bic.b   #06h,&P1IFG
   reti
 S10:
   MOV #10, R5
+  bic.b   #06h,&P1IFG
   reti
 S11:
   MOV #11, R5
+  bic.b   #06h,&P1IFG
   reti
 
 
@@ -318,33 +333,13 @@ displayThirdSegment:
 
 // --------------------------------------------------------------------------------------------------------------------------- Rey 
 
-// Objetivo: The subroutine will clean every segment of the LCD
-// Precondiciones: No pre-conditions in particular
-// Postcondiciones: LCD will not display anything
-// Autor: Rey J. Cotto
-// Fecha: 24/04/2021
-displayClean:
-        MOV.B   #0x00, &0X0a29 ;1st Segment-H
-        MOV.B   #0x00, &0X0a2a ;1st Segment-L
-        MOV.B   #0x00, &0X0a25 ;2nd Segment-H
-        MOV.B   #0x00, &0X0a26 ;2nd Segment-L
-        MOV.B   #0x00, &0X0a23 ;3rd Segment-H
-        MOV.B   #0x00, &0X0a24 ;3rd Segment-L
-        MOV.B   #0x00, &0X0a32 ;4th Segment-H
-        MOV.B   #0x00, &0X0a33 ;4th Segment-L
-        MOV.B   #0x00, &0X0a2e ;5th Segment-H
-        MOV.B   #0x00, &0X0a2f ;5th Segment-L
-        MOV.B   #0x00, &0X0a27 ;6th Segment-H
-        MOV.B   #0x00, &0X0a28 ;6th Segment-L
-        ret
-
 // Objetivo: Display the word "OPTION" on the LCD Display
 // Precondiciones: Program must be in stage 0
 // Postcondiciones: LCD will display "OPTION" on the LCD Display
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayOption:
-        CALL #displayClean
+        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
         MOV.B   #0xFC, &0X0a29  ;O-H
         MOV.B   #0x00, &0X0a2a  ;O-L
         MOV.B   #0xCF, &0X0a25  ;P-H
@@ -365,7 +360,7 @@ displayOption:
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayRead:
-        CALL #displayClean
+        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
         MOV.B   #0xCF, &0X0a29  ;R-H
         MOV.B   #0x02, &0X0a2a  ;R-L
         MOV.B   #0x9E, &0X0a25  ;E-H
@@ -382,7 +377,7 @@ displayRead:
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayLog:
-        CALL #displayClean
+        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
         MOV.B   #0x1C, &0X0a29  ;L-H
         MOV.B   #0x00, &0X0a2a  ;L-L
         MOV.B   #0xFC, &0X0a25  ;O-H
