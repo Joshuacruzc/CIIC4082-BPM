@@ -19,12 +19,10 @@ s2T     db  0x01, 0x02, 0x0C, 0x0C,0x0C,0x0C,0x0C,0x0C,0x0A, 0x00, 0x0C
 ; Digits    0     1     2     3     4     5     6     7     8     9
 digitH  db 0xFC, 0x60, 0xDB, 0xF3, 0x67, 0xB7, 0xBF, 0xE0, 0xFF, 0xF7
 digitL  db 0x28, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+
 ; Battery bars
 battery db      0x20, 0x40, 0x80
 
-; Letter    A     B     D     E     G     I     L     M     N     O     P     R     T     
-letterH db 0xEF, 0xF1, 0xF0, 0x9E, 0xBD, 0x90, 0x1C, 0x6C, 0x6C, 0xFC, 0xCF, 0xCF, 0x80
-letterL db 0x00, 0x50, 0x50, 0x00, 0x00, 0x50, 0x00, 0xA0, 0x82, 0x00, 0x00, 0x02, 0x50
 //PRE-DEFINED VALUES END HERE
 
         ORG     0FFE8h                  ; vector for TIMER_A0
@@ -320,36 +318,91 @@ displayThirdSegment:
 
 // --------------------------------------------------------------------------------------------------------------------------- Rey 
 
-// Objetivo: 
-// Precondiciones: 
-// Postcondiciones: 
-// Autor: 
-// Fecha:
+// Objetivo: The subroutine will clean every segment of the LCD
+// Precondiciones: No pre-conditions in particular
+// Postcondiciones: LCD will not display anything
+// Autor: Rey J. Cotto
+// Fecha: 24/04/2021
+displayClean:
+        MOV.B   #0x00, &0X0a29 ;1st Segment-H
+        MOV.B   #0x00, &0X0a2a ;1st Segment-L
+        MOV.B   #0x00, &0X0a25 ;2nd Segment-H
+        MOV.B   #0x00, &0X0a26 ;2nd Segment-L
+        MOV.B   #0x00, &0X0a23 ;3rd Segment-H
+        MOV.B   #0x00, &0X0a24 ;3rd Segment-L
+        MOV.B   #0x00, &0X0a32 ;4th Segment-H
+        MOV.B   #0x00, &0X0a33 ;4th Segment-L
+        MOV.B   #0x00, &0X0a2e ;5th Segment-H
+        MOV.B   #0x00, &0X0a2f ;5th Segment-L
+        MOV.B   #0x00, &0X0a27 ;6th Segment-H
+        MOV.B   #0x00, &0X0a28 ;6th Segment-L
+        ret
+
+// Objetivo: Display the word "OPTION" on the LCD Display
+// Precondiciones: Program must be in stage 0
+// Postcondiciones: LCD will display "OPTION" on the LCD Display
+// Autor: Rey J. Cotto
+// Fecha: 24/04/2021
 displayOption:
+        CALL #displayClean
+        MOV.B   #0xFC, &0X0a29  ;O-H
+        MOV.B   #0x00, &0X0a2a  ;O-L
+        MOV.B   #0xCF, &0X0a25  ;P-H
+        MOV.B   #0x00, &0X0a26  ;P-L
+        MOV.B   #0x80, &0X0a23  ;T-H
+        MOV.B   #0x50, &0X0a24  ;T-L
+        MOV.B   #0x90, &0X0a32  ;I-H
+        MOV.B   #0x50, &0X0a33  ;I-L
+        MOV.B   #0xFC, &0X0a2e  ;O-H
+        MOV.B   #0x00, &0X0a2f  ;O-L
+        MOV.B   #0x6C, &0X0a27  ;N-H
+        MOV.B   #0x82, &0X0a28  ;N-L
         ret
 
-// Objetivo: 
-// Precondiciones: 
-// Postcondiciones: 
-// Autor: 
-// Fecha:
+// Objetivo: Display the word "READ" on the LCD Display
+// Precondiciones: Program must be in stage 1
+// Postcondiciones: LCD will display "READ" on the LCD Display
+// Autor: Rey J. Cotto
+// Fecha: 24/04/2021
 displayRead:
+        CALL #displayClean
+        MOV.B   #0xCF, &0X0a29  ;R-H
+        MOV.B   #0x02, &0X0a2a  ;R-L
+        MOV.B   #0x9E, &0X0a25  ;E-H
+        MOV.B   #0x00, &0X0a26  ;E-L
+        MOV.B   #0xEF, &0X0a23  ;A-H
+        MOV.B   #0x00, &0X0a24  ;A-L
+        MOV.B   #0xF0, &0X0a32  ;D-H
+        MOV.B   #0x50, &0X0a33  ;D-L
         ret
 
-// Objetivo: 
-// Precondiciones: 
-// Postcondiciones: 
-// Autor: 
-// Fecha:
+// Objetivo: Display the word "LOG" on the LCD Display
+// Precondiciones: Program must be in stage 2
+// Postcondiciones: LCD will display "LOG" on the LCD Display
+// Autor: Rey J. Cotto
+// Fecha: 24/04/2021
 displayLog:
+        CALL #displayClean
+        MOV.B   #0x1C, &0X0a29  ;L-H
+        MOV.B   #0x00, &0X0a2a  ;L-L
+        MOV.B   #0xFC, &0X0a25  ;O-H
+        MOV.B   #0x00, &0X0a26  ;O-L
+        MOV.B   #0xBD, &0X0a23  ;G-H
+        MOV.B   #0x00, &0X0a24  ;G-L
         ret
 
-// Objetivo: 
-// Precondiciones: 
-// Postcondiciones:
-// Autor: 
-// Fecha:
+// Objetivo: Display the word "BPM" on the LCD Display
+// Precondiciones: Program must be in stage 2
+// Postcondiciones: LCD will display "BPM" on the LCD Display
+// Autor: Rey J. Cotto
+// Fecha: 24/04/2021
 displayBPM:
+        MOV.B   #0xF1, &0X0a32 ;B-H
+        MOV.B   #0x50, &0X0a33 ;B-L
+        MOV.B   #0xCF, &0X0a2e ;P-H
+        MOV.B   #0x00, &0X0a2f ;P-L
+        MOV.B   #0x6C, &0X0a27 ;M-H
+        MOV.B   #0xA0, &0X0a28 ;M-L
         ret
 
 edgeOfBattery:
