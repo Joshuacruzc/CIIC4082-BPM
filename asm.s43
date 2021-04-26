@@ -10,19 +10,19 @@
 //PRE-DEFINED VALUES START HERE
 ;Heart Beat Reference
 heartbeat dw    0
+result    dw    0
 ;S1 Transitions
-s1T     db  0x0C, 0x06, 0x03, 0x04, 0x05, 0x0C, 0x07, 0x0C, 0x0C, 0x0C, 0x0C
-
+;s1T     db  0x0B, 0x06, 0x03, 0x04, 0x05, 0x00, 0x07, 0x07, 0x0B, 0x0A, 0x0C
+s1T     db  0x0B, 0x06, 0x03, 0x04, 0x05, 0x00, 0x07, 0x07, 0x0B, 0x0A
 ;S2 Transitions
-s2T     db  0x01, 0x02, 0x01, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0A, 0x00, 0x0C
-
+;s2T     db  0x01, 0x02, 0x01, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x09, 0x00, 0x0B
+s2T     db  0x01, 0x02, 0x01, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x09, 0x00
 ; Digits    0     1     2     3     4     5     6     7     8     9
 digitH  db 0xFC, 0x60, 0xDB, 0xF3, 0x67, 0xB7, 0xBF, 0xE0, 0xFF, 0xF7
 digitL  db 0x28, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 
 ; Battery bars
 battery db      0x20, 0x40, 0x80
-
 //PRE-DEFINED VALUES END HERE
 
         ORG     0FFE8h                  ; vector for TIMER_A0
@@ -44,7 +44,6 @@ battery db      0x20, 0x40, 0x80
 init:   MOV     #SFE(CSTACK), SP        ; set up stack
 main:   NOP                             ; main program
         MOV.W   #WDTPW+WDTHOLD,&WDTCTL  ; Stop watchdog timer
-
         bic.b   #0xFF, &P1SEL0          ; Set PxSel0 and PxSel1 to digital I/O
         bic.b   #0xFF, &P1SEL1          ; Digital I/O is the default
         bic.b   #0xFF, &P9SEL0
@@ -59,7 +58,7 @@ main:   NOP                             ; main program
         bis.b   #06h, &P1OUT            ; resistor. Push is read as 0 and else 1
                                         
         bis.b   #06h, &P1IE             ; Enable interrupt at P1.1, P1.2
-        bis.b   #06h, &P1IES            ; Set interrupt on high-to-low 
+        bic.b   #06h, &P1IES            ; Set interrupt on low-to-high 
                                         ; transition of P1.1, P1.2
 
         ; Enable LCD segments
@@ -92,13 +91,12 @@ main:   NOP                             ; main program
 
         bic.b   #06h, &P1IFG            ; To erase a flag raised before
 
-        NOP                             ; NOP before setting GIE required by
+        nop                             ; NOP before setting GIE required by
                                         ; the architecture
         bis     #GIE+LPM0, SR           ; Enable interrupts and enter Low Power mode 0
                                         ; that doesn't disable timers
         nop                             ; Required after enabling interrupts
         ret
-        NOP                             ; (endless loop)
  
 startTimer1:
         mov     #TASSEL_2+MC_1+ID_3, &TA1CTL
@@ -141,14 +139,20 @@ startTimerA0:
 stopTimerA0:
         mov     #TASSEL_2+MC_0+ID_3, &TA0CTL
         nop
-        MOV     #8, R5
-        bic.b   #06h, &P1IFG
-        reti
+        mov     #0, R12
+        jmp     finishedBPM
         
 turnOnHeart:                            ; Subroutine for starting/stoping timer
         bis.b   #00000100B, &0x0A22     ; Turns on the heart
         call    #startTimer1
         ret
+
+finishedBPM:
+        mov.b   #00001000B, &0x0A22
+        bic.b   #00000100B, &0x0A22
+        mov     #8, R5
+        bic.b   #06h, &P1IFG
+        reti
 
 // Objetivo: 
 // Precondiciones: 
@@ -156,7 +160,7 @@ turnOnHeart:                            ; Subroutine for starting/stoping timer
 // Autor: 
 // Fecha:
 PORT1_ISR:                              ; ISR to activate timer 0 or timer 1
-        CALL    #delay
+        call    #delay
         mov.b   &P1IFG,R7               ; Record the button that was pressed
         bit.b   #2, R7                  ; If button is s1
         jnz     transitionS1            ; Start timer 0
@@ -165,37 +169,33 @@ PORT1_ISR:                              ; ISR to activate timer 0 or timer 1
  
 transitionS1:
         mov.b   s1T(R5), R6
-        JMP nextState
+        jmp     nextState
         
 transitionS2:
         mov.b   s2T(R5), R6
         jmp     nextState
         
 nextState:
-        cmp #0, R6
-        JEQ S0
-        cmp #1, R6
-        JEQ S1
-        cmp #2, R6
-        JEQ S2
-        cmp #3, R6
-        JEQ S3
-        cmp #4, R6
-        JEQ S4
-        cmp #5, R6
-        JEQ S5
-        cmp #6, R6
-        JEQ S6
-        cmp #7, R6
-        JEQ S7
-        cmp #8, R6
-        JEQ S8
-        cmp #9, R6
-        JEQ S9
-        cmp #10, R6
-        JEQ S10
-        cmp #11, R6
-        JEQ S11
+        cmp     #0, R6
+        jeq     optionState
+        cmp     #1, R6
+        jeq     readState
+        cmp     #2, R6
+        jeq     logState
+        cmp     #3, R6
+        jeq     viewReading1State
+        cmp     #4, R6
+        jeq     viewReading2State
+        cmp     #5, R6
+        jeq     viewReading3State
+        cmp     #6, R6
+        jeq     readingBPMState
+        cmp     #7, R6
+        jeq     countBeatState
+        cmp     #9, R6
+        jeq     displaySaveState
+        cmp     #10, R6
+        jeq     saveBPMState
         bic.b   #06h, &P1IFG
         reti
         
@@ -205,87 +205,89 @@ nextState:
 // Postcondiciones: 
 // Autor: 
 // Fecha:
-S0:
-        MOV     #0, R5
-        CALL    #displayOption
+optionState:
+        mov     #0, R5
+        call    #displayOption
         bic.b   #06h, &P1IFG
         reti
-S1:
-        MOV     #1, R5
-        CALL    #displayRead
+readState:
+        mov     #1, R5
+        call    #displayRead
         bic.b   #06h, &P1IFG
         reti
-S2:
-        MOV     #2, R5
-        CALL    #displayLog
+logState:
+        mov     #2, R5
+        call    #displayLog
         bic.b   #06h, &P1IFG
         reti
-S3:
-        MOV     #3, R5
+viewReading1State:
+        mov     #3, R5
         call    #records
         bic.b   #06h, &P1IFG
         reti
-S4:
-        MOV     #4, R5
+viewReading2State:
+        mov     #4, R5
         call    #records
         bic.b   #06h, &P1IFG
         reti
-S5:
-        MOV     #0, R5
+viewReading3State:
+        mov     #5, R5
         call    #records
+        call    #resetMemoryPointer
         bic.b   #06h, &P1IFG
         reti
-S6:
-  s6Setup:
+readingBPMState:
+        mov     #6, R5
         mov     #2, &LCDCMEMCTL          
-        CALL    #edgeOfBattery
-        MOV     #0, heartbeat
-  s6Main:
-        MOV     #7, R5
+        call    #edgeOfBattery
+        mov     #0, heartbeat
         bic.b   #06h, &P1IFG
         reti
-S7:
-        MOV     #7, R5
-        CALL    #turnOnHeart
+countBeatState:
+        mov     #7, R5
+        call    #turnOnHeart
         inc     heartbeat
         cmp     #1, heartbeat
-        JEQ     s7StartBatteryCount
-        JMP     s6Main
-  
+        jeq     s7StartBatteryCount
+        bic.b   #06h, &P1IFG
+        reti
 s7StartBatteryCount:
-        CALL    #startTimerA0
-        JMP     s5Main
-  
-S8:
-        MOV     #9, R5
-        call    #
+        call    #startTimerA0
+        call    #resetBattery
+        bic.b   #06h, &P1IFG
+        reti 
+displaySaveState:
+        mov     #9, R5
+        call    #displaySave
         bic.b   #06h, &P1IFG
         reti
-S9:
-        MOV     #9, R5
-        bic.b   #06h, &P1IFG
-        reti
-S10:
-        MOV     #10, R5
-        bic.b   #06h, &P1IFG
-        reti
-S11:
-        MOV     #11, R5
-        bic.b   #06h, &P1IFG
-        reti
+saveBPMState:
+        call    #reorganizeData
+        mov     result, &0x1980
+        mov     #0,R6
+        jmp     nextState
 
-
+reorganizeData:
+        mov     &0x1982, &0x1984
+        mov     &0x1980, &0x1982
+        ret
 
 batteryFull:
+        call    #clearBatteryCells
+        add     #6, R12
+        call    #calcBPM
+        call    #displayResults
+        call    #resetBattery
+        cmp     #30, R12
+        jeq     stopTimerA0
+        bic.b   #06h, &P1IFG
+        reti
+
+resetBattery:
         mov     #0, R13                 ; Represents the state of the battery
         mov     #0, R14                 ; Represents odd or even
         mov     #0, R15                 ; Represents the position of the list
-        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
-        add     #6, R12
-        cmp     #30, R12
-        JEQ     stopTimerA0
-        CALL    #edgeOfBattery
-        reti
+        ret
 
 delay:
         push.b  R4
@@ -297,11 +299,147 @@ delay:
         ret
 
 records:
-        mov.b   @R8+, R14
-        mov.b   @R8+, R15
-        call    #seperateDigits
+        mov     @R8+, R14
         call    #displayResults
         ret
+
+resetMemoryPointer:
+        mov     #0x1980,R8
+        ret
+
+calcBPM:
+        mov     &heartbeat, R14
+        cmp     #6, R12
+        jeq     calcBPM6
+        cmp     #12, R12
+        jeq     calcBPM12
+        cmp     #18, R12
+        jeq     calcBPM18
+        cmp     #24, R12
+        jeq     calcBPM24
+        cmp     #30, R12
+        jeq     calcBPM30
+
+// Assuming heart beats are stored in R14
+// BPM result is stored in R14
+calcBPM6:
+        push.w  R15                     ; Save value of R15 in stack
+        mov     #10, R15                ; 6 seconds is 1/10 of a minute
+        call    #mulNumbers             ; Multiply heart beats by 10 to calculate BPM
+        pop.w   R15                     ; Recover value of R15 from stack
+        ret
+        
+calcBPM12:
+        push.w  R15                     ; Save value of R15 in stack
+        mov     #5, R15                 ; 12 seconds is 1/5 of a minute
+        call    #mulNumbers             ; Multiply heart beats by 5 to calculate BPM
+        pop.w   R15                     ; Recover value of R15 from stack
+        ret
+        
+calcBPM18:
+        push.w  R15                     ; Save value of R15 in stack
+        mov     #10, R15                ; 18 seconds is 3/10 of a minute
+        call    #mulNumbers             ; Since we don't have floats,
+        mov     #3, R15                 ; to calculate BPM, we first multiply by 10,
+        call    #divNumbers             ; and then divide by 3
+        pop.w   R15                     ; Recover value of R15 from stack
+        ret
+
+calcBPM24:
+        push.w  R15                     ; Save value of R15 in stack
+        mov     #25, R15                ; 24 seconds is 2/5 = 1/2.5 of a second
+        call    #mulNumbers             ; Since we don't have floats, to calculate BPM,
+        mov     #10, R15                ; we first multiply by 25 (2.5 * 10 = 15),
+        call    #divNumbers             ; and then we divide by 10
+        pop.w   R15                     ; Recover value of R15 from stack
+        ret
+
+calcBPM30:
+        push.w  R15                     ; Save value of R15 in stack
+        mov     #2, R15                 ; 30 seconds is 1/2 of a second
+        call    #mulNumbers             ; Multiply heart beats by 2 to calculate BPM
+        mov     R14, result             ; Save the final result on RAM
+        pop.w   R15                     ; Recover value of R15 from stack
+        ret   
+
+
+// Objetivo: Multiplicar los números en R14 y R15, para entonces guardarlos en R14.
+// R14 = R14 * R15
+// Precondiciones: R14 y R15 contienen los números a ser multiplicados 
+// Postcondiciones: R14 contiene el producto de la multiplicacion
+// Autor: Joshua Cruz Cintrón, Abdiel Cortés Cortés
+// Fecha: 24/abril/2021
+mulNumbers:                             ; Operation for multiplying 2 numbers
+        push.w  R6                      ; Push R6 and R7 to stack so that we can 
+        push.w  R7                      ; later recover their original values
+        cmp     #0,R15                  ; Check if the R15 = 0
+        jeq     multZero                ; If R15 = 0 then result = 0 
+        cmp     #0,R14                  ; Check if the R14 = 0
+        jeq     multZero                ; If R14 = 0 then result = 0 
+    multSetup:                          ; Setup numbers in the proper order
+                                        ; for multiplication
+        cmp     R14, R15                ; Compare which number is bigger
+        jl      multAlgorithm           ; If R14>R15 then multiply both numbers
+        call    #multSwitchNumbers      ; If R15>R14 then reverse both numbers
+    multAlgorithm:                      ; Algorithm for multiplying 2 numbers
+        mov     R14, R6                 ; Re-aranging data for multiplication
+        mov     R15, R7                 ; Re-aranging data for multiplication
+    multLoop:                           ; Lable used for looping
+        dec     R7                      ; Decrement by 1
+        jz      multDone                ; Multiplication is finished
+        add     R6, R14                 ; Remember that multiplication is
+                                        ; just a series of additions
+        jmp     multLoop                ; Multiplication not done
+    multDone:                           ; Multiplication finished
+        pop.w   R7                      ; Pop from stack to recover original 
+        pop.w   R6                      ; values of R6 and R7
+        ret
+    multZero:                           ; Multiplication result is 0
+        mov     #0, R14                 ; Save a 0 in R14
+        jmp     multDone
+
+// Objetivo: Intercambiar los números de los registros R14 y R15
+// Precondiciones: R14 contiene el número menor
+// Postcondiciones: R14 contiene el número mayor
+// Autor: Joshua Cruz Cintrón
+// Fecha: 14/marzo/2021
+multSwitchNumbers:                      ; Invert the data on both R14 and R15
+        push.w   R15                    ; Pushed to the stack so we dont 
+                                        ; override the data
+        mov      R14, R15               ; Swap R14 to R15
+        pop.w    R14                    ; Retrieve the data from the stack
+        ret                             ; Swapping done
+
+
+// Objetivo: Tomar el valor almacenado en R14 y dividirlo con el valor almacenado 
+// en R15; el resultado se guarda en R14 (R14 = R14 / R15).
+// Precondiciones: En R14 esta almacenado el primer numero en binario y en R15 
+// esta almacenado el segundo numero en binario.
+// Postcondiciones: El resultado de la division estara almacenado en R14 y en R5;
+// R15 siempre sera 0.
+// Autor: Abdiel Cortés Cortés
+// Fecha: 24/abril/2021
+divNumbers:                             ; Operation for dividing 2 numbers
+        push.w  R5                      ; Use stack to save original value of R5
+        cmp     #0,R15                  ; Check if the denominator is 0
+        jeq     divZero                 ; Cant divide by 0
+        cmp     #0,R14                  ; Check if the numerator is 0
+        jeq     divZero                 ; If 0 then result = 0
+        mov     #0, R5                  ; R5 = quotient = 0   
+    divLoop:                            ; Label used for looping
+        sub     R15, R14                ; R14 = R14 - R15
+        cmp     #0, R14                 ; Compare to see if we can keep subtracting
+        jl      divEnd                  ; R14 < 0, its negative so we subtracted
+                                        ; too much
+        inc     R5                      ; Quotient += 1
+        jmp     divLoop                 ; Keep dividing    
+    divEnd:                             ; Division finished
+        mov     R5, R14                 ; Save result in R14
+        pop.w   R5                      ; Use stack to recover R5's value
+        ret
+    divZero:
+        mov     #0, R5                  ; Put 0 in R5, which will later be saved in R14
+        jmp     divEnd
 
 // Objetivo: Seperate the result found on both R14 and R15 into individual digits
 // Precondiciones: Some value has to be stored at least in R14, R12 is needed 
@@ -314,8 +452,10 @@ records:
 // Autor: Daniel A. Crespo 
 // Fecha:15/Mar/202
 seperateDigits:                         ; Subroutine used for seperating the 
-                                        ; results found in R14 and R15 (if any) 
-        mov     #2,R12                  ; R12 serves as a counter for seperating
+        push.w  R4                      ; results found in R14 and R15 (if any) 
+        push.w  R12
+        push.w  R14
+        mov     #4,R12                  ; R12 serves as a counter for seperating
                                         ; each digit. At first it removes whats 
                                         ; inside R15
         mov     #0,R11                  ; R11 serves as a counter for seperating
@@ -328,33 +468,30 @@ seperateDigits:                         ; Subroutine used for seperating the
         jeq     ones                    ; Seperate ones
         cmp     #2,R12                  ; R12=2 means seperate by tens
         jeq     tens                    ; Seperate tens
-        jmp     otherRegister           ; Switch whats inside register R14 to R15
+        cmp     #3,R12                  ; R12=3 means seperate by hundreds
+        jeq     hundreds                ; Seperate hundreds
+        jmp     finished                ; Switch whats inside register R14 to R15
                                         ; or it means that seperation is finished
-        
-    otherRegister:                     
-        cmp     #3,R11                  ; R11=3 means that 3 digits where seperated
-        jeq     finished                ; Seperation of digits is completed 
-        mov     R14,R15                 ; Switch what is in R14 to R15
-        mov     #0,R14                  ; Clear R14 because the data is now on R15
-        mov     #3,R12                  ; R12=3 meaning that it should loop 2 
-                                        ; more times so we can seperate what is inside R14
-        jmp     loop                    ; Keep looping
     
     ones:                               ; If we are seperating the ones then
-        mov     R15,R9                  ; move R15 to R9 because its already in 
+        mov     R14,R9                  ; move R15 to R9 because its already in 
                                         ; the tense form
-        mov     #0,R15                  ; Clear R15 for later use
+        mov     #0,R14                  ; Clear R15 for later use
         jmp     pushDigit               ; Push the digit on the stack
 
     tens:                               ; If we are seperating the tens then
         mov     #10,R4                  ; set R4 to 10 so we can subtract by tens
-        jmp     subWithTenses           ; Sub R15 at the specified tens    
+        jmp     subWithTenses           ; Sub R15 at the specified tens   
+
+    hundreds:                           ; If we are seperating the hundreds then
+        mov     #100,R4                 ; set R4 to 100 so we can subtract by hundreds
+        jmp     subWithTenses           ; Sub R15 at the specified tens
         
     subWithTenses:                      ; General subroutine to seperate digits
                                         ; by the specified tens
-        cmp     R4,R15                  ; R4<R5 means that the number is a lower tens
+        cmp     R4,R14                  ; R4<R5 means that the number is a lower tens
         jl      pushDigit               ; Push the digit to the stack
-        sub     R4,R15                  ; Sub R4-R15 by the specified tens
+        sub     R4,R14                  ; Sub R4-R15 by the specified tens
         inc     R9                      ; Increment R9 by 1 meaning its the quotient
         jmp     subWithTenses           ; Keep subtracting by the specified tens
     
@@ -369,8 +506,10 @@ seperateDigits:                         ; Subroutine used for seperating the
         pop.w   R10
         pop.w   R11
        ;Most Significant
+        pop.w   R14
+        pop.w   R12
+        pop.w   R4
         ret
-        ;jmp     displayResults          ; Display results to the user
 
 // Objetivo: Print out the values stored in R9, R10, R11
 // Precondiciones: R9, R10, R11 represents the digits to print out
@@ -379,11 +518,12 @@ seperateDigits:                         ; Subroutine used for seperating the
 // Autor: Daniel A. Crespo
 // Fecha: 14/03/21
 displayResults:                         ; Subroutine used for displaying the results
-        push.w  R11
-        push.w  R10
+        call    #seperateDigits
+        call    #clearPrevResult
         push.w  R9
+        push.w  R10
+        push.w  R11
         mov     #4,R10                  ; R10 represents the 3 digits we are going to display
-        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
         mov     #0,R11                  ; R11 is used as a flag for if digit has 
                                         ; 0 on the left side of the result, but 
                                         ; it also serves as an indicator as to 
@@ -410,8 +550,6 @@ displayResults:                         ; Subroutine used for displaying the res
         cmp     #3,R11                  ; R11=3 means that the third display
                                         ; segment can be used for displaying the digit
         jeq     displayThirdDigit       ; Display digit on the third segment
-        cmp     #4,R11                  ; R11=4 means that the fourth display
-                                        ; segment can be used for displaying the digit
         
     displayFirstDigit:                  ; Display digit on the first segment
         call    #displayFirstSegment    ; Call subroutine for displaying digit 
@@ -430,6 +568,15 @@ displayResults:                         ; Subroutine used for displaying the res
         
     resultsDone:                        ; Result has finally finished printing
         call    #displayBPM
+        ret
+
+clearPrevResult:
+        bic.b   #11111111B, &0x0A29      
+        bic.b   #11111111B, &0x0A29+1
+        bic.b   #11111111B, &0x0A25      
+        bic.b   #11111111B, &0x0A25+1
+        bic.b   #11111111B, &0x0A23      
+        bic.b   #11111111B, &0x0A23+1
         ret
 
 // Objetivo: Display a number on the first segment of the LCD Display
@@ -462,27 +609,25 @@ displayThirdSegment:
         mov.b   digitL(R9), &0x0A23+1
         ret
 
-// --------------------------------------------------------------------------------------------------------------------------- Rey 
-
 // Objetivo: Display the word "OPTION" on the LCD Display
 // Precondiciones: Program must be in stage 0
 // Postcondiciones: LCD will display "OPTION" on the LCD Display
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayOption:
-        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
-        MOV.B   #0xFC, &0X0a29  ;O-H
-        MOV.B   #0x00, &0X0a2a  ;O-L
-        MOV.B   #0xCF, &0X0a25  ;P-H
-        MOV.B   #0x00, &0X0a26  ;P-L
-        MOV.B   #0x80, &0X0a23  ;T-H
-        MOV.B   #0x50, &0X0a24  ;T-L
-        MOV.B   #0x90, &0X0a32  ;I-H
-        MOV.B   #0x50, &0X0a33  ;I-L
-        MOV.B   #0xFC, &0X0a2e  ;O-H
-        MOV.B   #0x00, &0X0a2f  ;O-L
-        MOV.B   #0x6C, &0X0a27  ;N-H
-        MOV.B   #0x82, &0X0a28  ;N-L
+        mov.w   #2, &LCDCMEMCTL         ; Clear LCD memory
+        mov.b   #0xFC, &0X0a29  ;O-H
+        mov.b   #0x00, &0X0a2a  ;O-L
+        mov.b   #0xCF, &0X0a25  ;P-H
+        mov.b   #0x00, &0X0a26  ;P-L
+        mov.b   #0x80, &0X0a23  ;T-H
+        mov.b   #0x50, &0X0a24  ;T-L
+        mov.b   #0x90, &0X0a32  ;I-H
+        mov.b   #0x50, &0X0a33  ;I-L
+        mov.b   #0xFC, &0X0a2e  ;O-H
+        mov.b   #0x00, &0X0a2f  ;O-L
+        mov.b   #0x6C, &0X0a27  ;N-H
+        mov.b   #0x82, &0X0a28  ;N-L
         ret
 
 // Objetivo: Display the word "READ" on the LCD Display
@@ -491,15 +636,15 @@ displayOption:
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayRead:
-        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
-        MOV.B   #0xCF, &0X0a29  ;R-H
-        MOV.B   #0x02, &0X0a2a  ;R-L
-        MOV.B   #0x9E, &0X0a25  ;E-H
-        MOV.B   #0x00, &0X0a26  ;E-L
-        MOV.B   #0xEF, &0X0a23  ;A-H
-        MOV.B   #0x00, &0X0a24  ;A-L
-        MOV.B   #0xF0, &0X0a32  ;D-H
-        MOV.B   #0x50, &0X0a33  ;D-L
+        mov.w   #2, &LCDCMEMCTL         ; Clear LCD memory
+        mov.b   #0xCF, &0X0a29  ;R-H
+        mov.b   #0x02, &0X0a2a  ;R-L
+        mov.b   #0x9E, &0X0a25  ;E-H
+        mov.b   #0x00, &0X0a26  ;E-L
+        mov.b   #0xEF, &0X0a23  ;A-H
+        mov.b   #0x00, &0X0a24  ;A-L
+        mov.b   #0xF0, &0X0a32  ;D-H
+        mov.b   #0x50, &0X0a33  ;D-L
         ret
 
 // Objetivo: Display the word "LOG" on the LCD Display
@@ -508,13 +653,13 @@ displayRead:
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayLog:
-        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
-        MOV.B   #0x1C, &0X0a29  ;L-H
-        MOV.B   #0x00, &0X0a2a  ;L-L
-        MOV.B   #0xFC, &0X0a25  ;O-H
-        MOV.B   #0x00, &0X0a26  ;O-L
-        MOV.B   #0xBD, &0X0a23  ;G-H
-        MOV.B   #0x00, &0X0a24  ;G-L
+        mov.w   #2, &LCDCMEMCTL         ; Clear LCD memory
+        mov.b   #0x1C, &0X0a29  ;L-H
+        mov.b   #0x00, &0X0a2a  ;L-L
+        mov.b   #0xFC, &0X0a25  ;O-H
+        mov.b   #0x00, &0X0a26  ;O-L
+        mov.b   #0xBD, &0X0a23  ;G-H
+        mov.b   #0x00, &0X0a24  ;G-L
         ret
 
 // Objetivo: Display the word "BPM" on the LCD Display
@@ -523,21 +668,42 @@ displayLog:
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayBPM:
-        MOV.B   #0xF1, &0X0a32 ;B-H
-        MOV.B   #0x50, &0X0a33 ;B-L
-        MOV.B   #0xCF, &0X0a2e ;P-H
-        MOV.B   #0x00, &0X0a2f ;P-L
-        MOV.B   #0x6C, &0X0a27 ;M-H
-        MOV.B   #0xA0, &0X0a28 ;M-L
+        mov.b   #0xF1, &0X0a32 ;B-H
+        mov.b   #0x50, &0X0a33 ;B-L
+        mov.b   #0xCF, &0X0a2e ;P-H
+        mov.b   #0x00, &0X0a2f ;P-L
+        mov.b   #0x6C, &0X0a27 ;M-H
+        mov.b   #0xA0, &0X0a28 ;M-L
+        ret
+
+// Objetivo: Display the word "SAVE" on the LCD Display
+// Precondiciones: Program must be in stage 2
+// Postcondiciones: LCD will display "BPM" on the LCD Display
+// Autor: Rey J. Cotto
+// Fecha: 24/04/2021
+displaySave:
+        mov.w   #2, &LCDCMEMCTL         ; Clear LCD memory
+        mov.b   #0xB7, &0X0a29  ;S-H
+        mov.b   #0x00, &0X0a2a  ;S-L
+        mov.b   #0xEF, &0X0a25  ;A-H
+        mov.b   #0x00, &0X0a26  ;A-L
+        mov.b   #0x0C, &0X0a23  ;V-H
+        mov.b   #0x28, &0X0a24  ;V-L
+        mov.b   #0x9E, &0X0a32  ;E-H
+        mov.b   #0x00, &0X0a33  ;E-L
+        ret
+
+clearBatteryCells:
+        bic.b   #00100000B,&0x0A31      ; cell 1
+        bic.b   #00100000B,&0x0A2D      ; cell 2
+        bic.b   #01000000B,&0x0A31      ; cell 3
+        bic.b   #01000000B,&0x0A2D      ; cell 4
+        bic.b   #10000000B,&0x0A31      ; cell 5
+        bic.b   #10000000B,&0x0A2D      ; cell 6
         ret
 
 edgeOfBattery:
         mov.b   #00010000B, &0x0A31     ; Turn on edge of batery
         ret
-// --------------------------------------------------------------------------------------------------------------------------- Rey 
-
-fin:    
-        reti
-
-
+        
         END
