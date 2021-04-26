@@ -5,7 +5,7 @@
         PUBLIC  main                    ; make the main label vissible
                                         ; outside this module
         
-        ORG     01C00h                  ; start of ram
+        ORG     01900h                  ; start of ram
 
 //PRE-DEFINED VALUES START HERE
 ;Heart Beat Reference
