@@ -11,10 +11,10 @@
 ;Heart Beat Reference
 heartbeat dw    0
 ;S1 Transitions
-s1T     db  0x0C, 0x05, 0x03, 0x04,0x0C,0x07,0x0C,0x0C,0x0C, 0x0C, 0x0B
+s1T     db  0x0C, 0x06, 0x03, 0x04, 0x05, 0x0C, 0x07, 0x0C, 0x0C, 0x0C, 0x0C
 
 ;S2 Transitions
-s2T     db  0x01, 0x02, 0x01, 0x0C,0x0C,0x0C,0x0C,0x0C,0x0A, 0x00, 0x0C
+s2T     db  0x01, 0x02, 0x01, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0A, 0x00, 0x0C
 
 ; Digits    0     1     2     3     4     5     6     7     8     9
 digitH  db 0xFC, 0x60, 0xDB, 0xF3, 0x67, 0xB7, 0xBF, 0xE0, 0xFF, 0xF7
@@ -45,15 +45,15 @@ init:   MOV     #SFE(CSTACK), SP        ; set up stack
 main:   NOP                             ; main program
         MOV.W   #WDTPW+WDTHOLD,&WDTCTL  ; Stop watchdog timer
 
-        bic.b   #0xFF,&P1SEL0           ; Set PxSel0 and PxSel1 to digital I/O
-        bic.b   #0xFF,&P1SEL1           ; Digital I/O is the default
-        bic.b   #0xFF,&P9SEL0
-        bic.b   #0xFF,&P9SEL1
+        bic.b   #0xFF, &P1SEL0          ; Set PxSel0 and PxSel1 to digital I/O
+        bic.b   #0xFF, &P1SEL1          ; Digital I/O is the default
+        bic.b   #0xFF, &P9SEL0
+        bic.b   #0xFF, &P9SEL1
 
-        bis.b   #0FDh,&P1DIR            ; Set P1.1 and P1.2 for input and all
+        bis.b   #0FDh, &P1DIR           ; Set P1.1 and P1.2 for input and all
                                         ; other P1 pins for output
-        bis.b   #0FFh,&P2DIR            ; All Port 2 pins as output
-        bis.b   #0xFF,&P9DIR            ; All Port 9 pins as output
+        bis.b   #0FFh, &P2DIR           ; All Port 2 pins as output
+        bis.b   #0xFF, &P9DIR           ; All Port 9 pins as output
 
         bis.b   #06h, &P1REN            ; P1.1, P1.2 Resistor enabled as pullup
         bis.b   #06h, &P1OUT            ; resistor. Push is read as 0 and else 1
@@ -63,16 +63,17 @@ main:   NOP                             ; main program
                                         ; transition of P1.1, P1.2
 
         ; Enable LCD segments
-        mov     #0xffff,&LCDCPCTL0
-        mov     #0xfc3f,&LCDCPCTL1
-        mov     #0x0fff,&LCDCPCTL2
+        mov     #0xffff, &LCDCPCTL0
+        mov     #0xfc3f, &LCDCPCTL1
+        mov     #0x0fff, &LCDCPCTL2
         
-        mov     #0x041e,&LCDCCTL0       ; Initialize LCD_C
-        mov     #0x0208,&LCDCVCTL       ; Initialize voltage
-        mov     #0x8000,&LCDCCPCTL      ; Clock synchronization enabled
-        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
-        bis     #1,&LCDCCTL0            ; Turn LCD on
-        bic     #LOCKLPM5,&PM5CTL0      ; Disable the GPIO power-on by default
+        mov     #0x041e, &LCDCCTL0      ; Initialize LCD_C
+        mov     #0x0208, &LCDCVCTL      ; Initialize voltage
+        mov     #0x8000, &LCDCCPCTL     ; Clock synchronization enabled
+        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
+        bis     #1, &LCDCCTL0           ; Turn LCD on
+        bic     #LOCKLPM5, &PM5CTL0     ; Disable the GPIO power-on by default
+        call    #displayOption
         
         ; Timer setup
         bis     #CCIE, &TA0CCTL0        ; Enable interrupt for TA0
@@ -81,15 +82,14 @@ main:   NOP                             ; main program
         mov     #25000, &TA1CCR0        ; Set the timer capture compare register 0
         
         ; Registers
-        mov     #0,R5                   ; Represents the state of the program
+        mov     #0, R5                  ; Represents the state of the program
         mov     #0, R6
-        mov     #0, R12
-        mov     #0,R13                  ; Represents the state
-        mov     #0,R14                   ; Represents odd or even
-        mov     #0,R15 
-        call    #displayOption
+        mov     #0x1980, R8             ; Memory direction for accessing records
+        mov     #0, R12                 ; Second that passed when reading BPM
+        mov     #0, R13                 ; Represents the state of the batery
+        mov     #0, R14                 ; Represents odd or even
+        mov     #0, R15                 ; Position of the batery list
 
-activateInterrupt:
         bic.b   #06h, &P1IFG            ; To erase a flag raised before
 
         NOP                             ; NOP before setting GIE required by
@@ -99,23 +99,22 @@ activateInterrupt:
         nop                             ; Required after enabling interrupts
         ret
         NOP                             ; (endless loop)
-
-;Interrupt Service Routine (ISR) that will be executed when the timmer 
+ 
 startTimer1:
         mov     #TASSEL_2+MC_1+ID_3, &TA1CTL
         nop
         ret
 
 TIMER_A1_ISR:   ; Second timer that displays the heart afeter 0.2 seconds
-        bic.b   #00000100B,&0x0A22
+        bic.b   #00000100B, &0x0A22
         mov     #TASSEL_2+MC_0+ID_3, &TA1CTL
         nop
-        bic.b   #06h,&P1IFG
+        bic.b   #06h, &P1IFG
         reti
 TIMER_A0_ISR: ; This timer works for looping the battery cells
-        cmp     #6,R13
+        cmp     #6, R13
         jeq     batteryFull
-        cmp     #0,R14
+        cmp     #0, R14
         jeq     oddBattery
         jmp     evenBattery 
 
@@ -123,7 +122,7 @@ oddBattery:
         bis.b   battery(R15), &0x0A31
         inc     R13
         inc     R14
-        bic.b   #06h,&P1IFG
+        bic.b   #06h, &P1IFG
         reti
 
 evenBattery:
@@ -131,7 +130,7 @@ evenBattery:
         inc     R13
         dec     R14
         inc     R15
-        bic.b   #06h,&P1IFG
+        bic.b   #06h, &P1IFG
         reti
 
 startTimerA0:
@@ -142,14 +141,15 @@ startTimerA0:
 stopTimerA0:
         mov     #TASSEL_2+MC_0+ID_3, &TA0CTL
         nop
-        bic.b   #06h,&P1IFG
+        MOV     #8, R5
+        bic.b   #06h, &P1IFG
         reti
         
 turnOnHeart:                            ; Subroutine for starting/stoping timer
-        bis.b   #00000100B,&0x0A22      ; Turns on the heart
+        bis.b   #00000100B, &0x0A22     ; Turns on the heart
         call    #startTimer1
         ret
-// ------------------------------------------------------------------------------------------------------ joshua 
+
 // Objetivo: 
 // Precondiciones: 
 // Postcondiciones:  
@@ -159,15 +159,10 @@ PORT1_ISR:                              ; ISR to activate timer 0 or timer 1
         CALL    #delay
         mov.b   &P1IFG,R7               ; Record the button that was pressed
         bit.b   #2, R7                  ; If button is s1
-        jnz     transitionS1             ; Start timer 0
+        jnz     transitionS1            ; Start timer 0
         bit.b   #4, R7                  ; If button is s2
-        jnz     transitionS2             ; Turns on heart
-/*
-deactivateInterrupts:
-        bic.b   #GIE+LPM0, 0(SP)
-        nop
-        reti
-  */ 
+        jnz     transitionS2            ; Turns on heart
+ 
 transitionS1:
         mov.b   s1T(R5), R6
         JMP nextState
@@ -201,7 +196,7 @@ nextState:
         JEQ S10
         cmp #11, R6
         JEQ S11
-        bic.b   #06h,&P1IFG
+        bic.b   #06h, &P1IFG
         reti
         
         
@@ -211,87 +206,90 @@ nextState:
 // Autor: 
 // Fecha:
 S0:
-  MOV #0, R5
-  CALL #displayOption
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #0, R5
+        CALL    #displayOption
+        bic.b   #06h, &P1IFG
+        reti
 S1:
-  MOV #1, R5
-  CALL #displayRead
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #1, R5
+        CALL    #displayRead
+        bic.b   #06h, &P1IFG
+        reti
 S2:
-  MOV #2, R5
-  CALL #displayLog
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #2, R5
+        CALL    #displayLog
+        bic.b   #06h, &P1IFG
+        reti
 S3:
-  MOV #3, R5
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #3, R5
+        call    #records
+        bic.b   #06h, &P1IFG
+        reti
 S4:
-  MOV #4, R5
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #4, R5
+        call    #records
+        bic.b   #06h, &P1IFG
+        reti
 S5:
-s5Setup:
-  mov     #2,&LCDCMEMCTL          ; Clear LCD memory
-  CALL  #edgeOfBattery
-  MOV   #0, heartbeat
-s5Main:
-  MOV #5, R5
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #0, R5
+        call    #records
+        bic.b   #06h, &P1IFG
+        reti
 S6:
-  MOV #6, R5
-  bic.b   #06h,&P1IFG
-  reti
+  s6Setup:
+        mov     #2, &LCDCMEMCTL          
+        CALL    #edgeOfBattery
+        MOV     #0, heartbeat
+  s6Main:
+        MOV     #7, R5
+        bic.b   #06h, &P1IFG
+        reti
 S7:
-  MOV   #7, R5
-  CALL #turnOnHeart
-  inc   heartbeat
-  cmp   #1,heartbeat
-  JEQ   s7StartBatteryCount
-  JMP s5Main
+        MOV     #7, R5
+        CALL    #turnOnHeart
+        inc     heartbeat
+        cmp     #1, heartbeat
+        JEQ     s7StartBatteryCount
+        JMP     s6Main
   
 s7StartBatteryCount:
-  CALL #startTimerA0
-  JMP s5Main
+        CALL    #startTimerA0
+        JMP     s5Main
   
 S8:
-  MOV #8, R5
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #9, R5
+        call    #
+        bic.b   #06h, &P1IFG
+        reti
 S9:
-  MOV #9, R5
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #9, R5
+        bic.b   #06h, &P1IFG
+        reti
 S10:
-  MOV #10, R5
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #10, R5
+        bic.b   #06h, &P1IFG
+        reti
 S11:
-  MOV #11, R5
-  bic.b   #06h,&P1IFG
-  reti
+        MOV     #11, R5
+        bic.b   #06h, &P1IFG
+        reti
 
 
-// ----------------------------------------------------------------------------------------------------------------- joshua 
+
 batteryFull:
-        mov     #0,R13                  ; Represents the state
-        mov     #0,R14                   ; Represents odd or even
-        mov     #0,R15                   ; Represents the position of the list
-        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
+        mov     #0, R13                 ; Represents the state of the battery
+        mov     #0, R14                 ; Represents odd or even
+        mov     #0, R15                 ; Represents the position of the list
+        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
         add     #6, R12
         cmp     #30, R12
         JEQ     stopTimerA0
         CALL    #edgeOfBattery
-        
         reti
 
 delay:
         push.b  R4
-        mov     #0x2710,R4
+        mov     #0x2710, R4
     decrement:
         dec     R4
         jnz     decrement
@@ -299,7 +297,140 @@ delay:
         ret
 
 records:
-        jmp     fin
+        mov.b   @R8+, R14
+        mov.b   @R8+, R15
+        call    #seperateDigits
+        call    #displayResults
+        ret
+
+// Objetivo: Seperate the result found on both R14 and R15 into individual digits
+// Precondiciones: Some value has to be stored at least in R14, R12 is needed 
+// as a counter for digits, R11 is needed as a count for how many are in the
+// stack, R9 is needed for saving the seperated digit from result, R4 is needed
+// for subtracting the result by the specified tens
+// Postcondiciones: R9, R10, R11 will house a seperate digit from least to most
+// significant digits. R12, R14, R15 will end up with trash data valued 0. 
+// R4 will end up with trash data valued 10.
+// Autor: Daniel A. Crespo 
+// Fecha:15/Mar/202
+seperateDigits:                         ; Subroutine used for seperating the 
+                                        ; results found in R14 and R15 (if any) 
+        mov     #2,R12                  ; R12 serves as a counter for seperating
+                                        ; each digit. At first it removes whats 
+                                        ; inside R15
+        mov     #0,R11                  ; R11 serves as a counter for seperating
+                                        ; 6 digits
+    loop:                               ; Lable used for looping
+        dec     R12                     ; Decrements by 1 meaning seperate to 
+                                        ; the next lower tenses 
+        mov     #0, R9                  ; R9 = quotient = 0
+        cmp     #1,R12                  ; R12=1 means seperate by ones
+        jeq     ones                    ; Seperate ones
+        cmp     #2,R12                  ; R12=2 means seperate by tens
+        jeq     tens                    ; Seperate tens
+        jmp     otherRegister           ; Switch whats inside register R14 to R15
+                                        ; or it means that seperation is finished
+        
+    otherRegister:                     
+        cmp     #3,R11                  ; R11=3 means that 3 digits where seperated
+        jeq     finished                ; Seperation of digits is completed 
+        mov     R14,R15                 ; Switch what is in R14 to R15
+        mov     #0,R14                  ; Clear R14 because the data is now on R15
+        mov     #3,R12                  ; R12=3 meaning that it should loop 2 
+                                        ; more times so we can seperate what is inside R14
+        jmp     loop                    ; Keep looping
+    
+    ones:                               ; If we are seperating the ones then
+        mov     R15,R9                  ; move R15 to R9 because its already in 
+                                        ; the tense form
+        mov     #0,R15                  ; Clear R15 for later use
+        jmp     pushDigit               ; Push the digit on the stack
+
+    tens:                               ; If we are seperating the tens then
+        mov     #10,R4                  ; set R4 to 10 so we can subtract by tens
+        jmp     subWithTenses           ; Sub R15 at the specified tens    
+        
+    subWithTenses:                      ; General subroutine to seperate digits
+                                        ; by the specified tens
+        cmp     R4,R15                  ; R4<R5 means that the number is a lower tens
+        jl      pushDigit               ; Push the digit to the stack
+        sub     R4,R15                  ; Sub R4-R15 by the specified tens
+        inc     R9                      ; Increment R9 by 1 meaning its the quotient
+        jmp     subWithTenses           ; Keep subtracting by the specified tens
+    
+    pushDigit:                          ; Push digit on the stack for later use
+        push.w  R9                      ; Push R9 = quotient = seperated digit
+        inc     R11                     ; Increment R11 by 1 meaning we have 1 more saved digit
+        jmp     loop                    ; Restart the loop again
+
+    finished:                           ; Seperation of digits is completed
+       ;Least Significant
+        pop.w   R9
+        pop.w   R10
+        pop.w   R11
+       ;Most Significant
+        ret
+        ;jmp     displayResults          ; Display results to the user
+
+// Objetivo: Print out the values stored in R9, R10, R11
+// Precondiciones: R9, R10, R11 represents the digits to print out
+// Postcondiciones: Display will show the results on the first 3 segments then 
+// the word BPM on the last 3 segments.
+// Autor: Daniel A. Crespo
+// Fecha: 14/03/21
+displayResults:                         ; Subroutine used for displaying the results
+        push.w  R11
+        push.w  R10
+        push.w  R9
+        mov     #4,R10                  ; R10 represents the 3 digits we are going to display
+        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
+        mov     #0,R11                  ; R11 is used as a flag for if digit has 
+                                        ; 0 on the left side of the result, but 
+                                        ; it also serves as an indicator as to 
+                                        ; were to display the number
+    displayNextDigit:                   ; Lable used for looping the next digit to display
+        dec     R10                     ; Decrement R10 by 1 meaning a digit is
+                                        ; being displayed
+        cmp     #0,R10                  ; R10=0 it means that all digits have been displayed
+        jeq     resultsDone             ; Result has finally finished printing
+        pop     R9                      ; Pop the digit from the stack
+        cmp     #1,R11                  ; If R11 >= 1 then that means that their are
+        jge     noMoreLeftZeros         ; no mores zeros to the left of the number
+        cmp     #0,R9                   ; If R9=0 that means that a zero was
+        jeq     displayNextDigit        ; found on the left of the digit so skip
+    noMoreLeftZeros:                    ; No more zeros found on the left side
+        inc     R11                     ; Increment R11 by 1 to display the next
+                                        ; digit on the next display segment
+        cmp     #1,R11                  ; R11=1 means that the first display
+                                        ; segment can be used for displaying the digit
+        jeq     displayFirstDigit       ; Display digit on the first segment
+        cmp     #2,R11                  ; R11=2 means that the second display
+                                        ; segment can be used for displaying the digit
+        jeq     displaySecondDigit      ; Display digit on the second segment
+        cmp     #3,R11                  ; R11=3 means that the third display
+                                        ; segment can be used for displaying the digit
+        jeq     displayThirdDigit       ; Display digit on the third segment
+        cmp     #4,R11                  ; R11=4 means that the fourth display
+                                        ; segment can be used for displaying the digit
+        
+    displayFirstDigit:                  ; Display digit on the first segment
+        call    #displayFirstSegment    ; Call subroutine for displaying digit 
+                                        ; on the first segment display
+        jmp     displayNextDigit        ; Go to the next digit for displaying
+        
+    displaySecondDigit:                 ; Display digit on the second segment
+        call    #displaySecondSegment   ; Call subroutine for displaying digit 
+                                        ; on the second segment display
+        jmp     displayNextDigit        ; Go to the next digit for displaying
+        
+    displayThirdDigit:                  ; Display digit on the Third segment
+        call    #displayThirdSegment    ; Call subroutine for displaying digit 
+                                        ; on the Third segment display
+        jmp     displayNextDigit        ; Go to the next digit for displaying
+        
+    resultsDone:                        ; Result has finally finished printing
+        call    #displayBPM
+        ret
 
 // Objetivo: Display a number on the first segment of the LCD Display
 // Precondiciones: R9 contains the position of the number that should be displayed
@@ -307,8 +438,8 @@ records:
 // Autor: Rey J. Cotto
 // Fecha: Apr/17/2021
 displayFirstSegment:                    
-        mov.b   digitH(R9),&0x0A29      
-        mov.b   digitL(R9),&0x0A29+1
+        mov.b   digitH(R9), &0x0A29      
+        mov.b   digitL(R9), &0x0A29+1
         ret
 
 // Objetivo: Display a number on the second segment of the LCD Display
@@ -317,8 +448,8 @@ displayFirstSegment:
 // Autor: Rey J. Cotto
 // Fecha: Apr/17/2021
 displaySecondSegment:                   
-        mov.b   digitH(R9),&0x0A25      
-        mov.b   digitL(R9),&0x0A25+1
+        mov.b   digitH(R9), &0x0A25      
+        mov.b   digitL(R9), &0x0A25+1
         ret
 
 // Objetivo: Display a number on the third segment of the LCD Display
@@ -327,8 +458,8 @@ displaySecondSegment:
 // Autor: Rey J. Cotto
 // Fecha: Apr/17/2021
 displayThirdSegment:                    
-        mov.b   digitH(R9),&0x0A23      
-        mov.b   digitL(R9),&0x0A23+1
+        mov.b   digitH(R9), &0x0A23      
+        mov.b   digitL(R9), &0x0A23+1
         ret
 
 // --------------------------------------------------------------------------------------------------------------------------- Rey 
@@ -339,7 +470,7 @@ displayThirdSegment:
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayOption:
-        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
+        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
         MOV.B   #0xFC, &0X0a29  ;O-H
         MOV.B   #0x00, &0X0a2a  ;O-L
         MOV.B   #0xCF, &0X0a25  ;P-H
@@ -360,7 +491,7 @@ displayOption:
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayRead:
-        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
+        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
         MOV.B   #0xCF, &0X0a29  ;R-H
         MOV.B   #0x02, &0X0a2a  ;R-L
         MOV.B   #0x9E, &0X0a25  ;E-H
@@ -377,7 +508,7 @@ displayRead:
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displayLog:
-        mov     #2,&LCDCMEMCTL          ; Clear LCD memory
+        mov     #2, &LCDCMEMCTL         ; Clear LCD memory
         MOV.B   #0x1C, &0X0a29  ;L-H
         MOV.B   #0x00, &0X0a2a  ;L-L
         MOV.B   #0xFC, &0X0a25  ;O-H
@@ -401,7 +532,7 @@ displayBPM:
         ret
 
 edgeOfBattery:
-        mov.b   #00010000B,&0x0A31      ; Turn on edge of batery
+        mov.b   #00010000B, &0x0A31     ; Turn on edge of batery
         ret
 // --------------------------------------------------------------------------------------------------------------------------- Rey 
 
