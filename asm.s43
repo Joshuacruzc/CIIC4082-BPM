@@ -12,7 +12,7 @@
 heartbeat dw    0
 result    dw    0
 ;S1 Transitions
-;s1T     db  0x0B, 0x06, 0x03, 0x04, 0x05, 0x00, 0x07, 0x07, 0x0B, 0x0A, 0x0C
+;s1T     db  0x0B, 0x06, 0x03, 0x04, 0x05, 0x00, 0x07, 0x07, 0x0B, 0x0A, 0x0B
 s1T     db  0x0B, 0x06, 0x03, 0x04, 0x05, 0x00, 0x07, 0x07, 0x0B, 0x0A
 ;S2 Transitions
 ;s2T     db  0x01, 0x02, 0x01, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x09, 0x00, 0x0B
@@ -20,7 +20,6 @@ s2T     db  0x01, 0x02, 0x01, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x09, 0x00
 ; Digits    0     1     2     3     4     5     6     7     8     9
 digitH  db 0xFC, 0x60, 0xDB, 0xF3, 0x67, 0xB7, 0xBF, 0xE0, 0xFF, 0xF7
 digitL  db 0x28, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-
 ; Battery bars
 battery db      0x20, 0x40, 0x80
 //PRE-DEFINED VALUES END HERE
@@ -97,18 +96,36 @@ main:   NOP                             ; main program
                                         ; that doesn't disable timers
         nop                             ; Required after enabling interrupts
         ret
- 
+
+// Objetivo: Activates timer A1
+// Precondiciones: activates every time user preses S1
+// Postcondiciones: Timer starts
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 startTimer1:
+        mov     #TASSEL_2+MC_0+ID_3, &TA1CTL
+        nop
         mov     #TASSEL_2+MC_1+ID_3, &TA1CTL
         nop
         ret
 
+// Objetivo: IRS for turning off the heart after 0.2 seconds
+// Precondiciones: Should have waited for 0.2 seconds
+// Postcondiciones: Heart will turn off from the LCD
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 TIMER_A1_ISR:   ; Second timer that displays the heart afeter 0.2 seconds
         bic.b   #00000100B, &0x0A22
         mov     #TASSEL_2+MC_0+ID_3, &TA1CTL
         nop
         bic.b   #06h, &P1IFG
         reti
+
+// Objetivo: IRS for timer A0 for looping the battery cells 
+// Precondiciones: Timer must reached 1 sec
+// Postcondiciones: Battery cells will start incrementing by 1 each second
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 TIMER_A0_ISR: ; This timer works for looping the battery cells
         cmp     #6, R13
         jeq     batteryFull
@@ -116,6 +133,11 @@ TIMER_A0_ISR: ; This timer works for looping the battery cells
         jeq     oddBattery
         jmp     evenBattery 
 
+// Objetivo: Turn on 1 odd battery 
+// Precondiciones: R14 must equal 0
+// Postcondiciones: 1 odd battery will turn on
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 oddBattery:
         bis.b   battery(R15), &0x0A31
         inc     R13
@@ -123,6 +145,11 @@ oddBattery:
         bic.b   #06h, &P1IFG
         reti
 
+// Objetivo: Turn on 1 even battery 
+// Precondiciones: R14 must not equal 0
+// Postcondiciones: 1 even battery will turn on
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 evenBattery:
         bis.b   battery(R15), &0x0A2D
         inc     R13
@@ -131,22 +158,44 @@ evenBattery:
         bic.b   #06h, &P1IFG
         reti
 
+// Objetivo: Activate timer A0
+// Precondiciones: heatbeat has the value 1 which means this subroutine 
+// was executed from another subroutine called s7StartBatteryClock
+// Postcondiciones: Timer A0 is active
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 startTimerA0:
         mov     #TASSEL_2+MC_3+ID_3, &TA0CTL
         nop
         ret
 
+// Objetivo: Stops timer A0 
+// Precondiciones: Timer must reach to 30 seconds
+// Postcondiciones: Timer is stopped and R12 will contain value 0. 
+// R12 represents the seconds)
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 stopTimerA0:
         mov     #TASSEL_2+MC_0+ID_3, &TA0CTL
         nop
         mov     #0, R12
         jmp     finishedBPM
-        
+
+// Objetivo: Turns on the heart for 0.2 seconds
+// Precondiciones: Program must be in state 7
+// Postcondiciones: LCD will display a heart timer A1 is activated
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 turnOnHeart:                            ; Subroutine for starting/stoping timer
         bis.b   #00000100B, &0x0A22     ; Turns on the heart
         call    #startTimer1
         ret
 
+// Objetivo: Turn on the clock icon
+// Precondiciones: Timer A0 has reached the 30 seconds
+// Postcondiciones: R5 will have a value 8
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 finishedBPM:
         mov.b   #00001000B, &0x0A22
         bic.b   #00000100B, &0x0A22
@@ -154,11 +203,13 @@ finishedBPM:
         bic.b   #06h, &P1IFG
         reti
 
-// Objetivo: 
-// Precondiciones: 
-// Postcondiciones:  
-// Autor: 
-// Fecha:
+// Objetivo: ISR for reading what button is pressed and jumping to the proper 
+// transition subroutine 
+// Precondiciones: S1 or S2 must be pressed 
+// Postcondiciones: Jumps to the transitions subroutine based on the 
+// button that is pressed
+// Autor: Daniel A. Crespo
+// Fecha: 23/04/2021
 PORT1_ISR:                              ; ISR to activate timer 0 or timer 1
         call    #delay
         mov.b   &P1IFG,R7               ; Record the button that was pressed
@@ -166,15 +217,36 @@ PORT1_ISR:                              ; ISR to activate timer 0 or timer 1
         jnz     transitionS1            ; Start timer 0
         bit.b   #4, R7                  ; If button is s2
         jnz     transitionS2            ; Turns on heart
- 
+
+// Objetivo: Looks in the list of trasition to find what will be the next 
+// state of the program. 
+// Precondiciones: S1 must be pressed
+// Postcondiciones: R6 will contain a value of 0 through 11 representing 
+// the next state
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 transitionS1:
         mov.b   s1T(R5), R6
         jmp     nextState
-        
+ 
+// Objetivo: Looks in the list of trasition to find what will be the next 
+// state of the program. 
+// Precondiciones: S2 must be pressed
+// Postcondiciones: R6 will contain a value of 0 through 11 representing 
+// the next state
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 transitionS2:
         mov.b   s2T(R5), R6
         jmp     nextState
-        
+
+
+// Objetivo: Decides what state to jump to next  
+// Precondiciones: R6 must contain the value 0 through 11 representing the 
+// next state of the aplication.
+// Postcondiciones: Jumps to the next state
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 nextState:
         cmp     #0, R6
         jeq     optionState
@@ -183,11 +255,11 @@ nextState:
         cmp     #2, R6
         jeq     logState
         cmp     #3, R6
-        jeq     viewReading1State
+        jeq     viewLog1State
         cmp     #4, R6
-        jeq     viewReading2State
+        jeq     viewLog2State
         cmp     #5, R6
-        jeq     viewReading3State
+        jeq     viewLog3State
         cmp     #6, R6
         jeq     readingBPMState
         cmp     #7, R6
@@ -200,42 +272,89 @@ nextState:
         reti
         
         
-// Objetivo: 
-// Precondiciones: 
-// Postcondiciones: 
-// Autor: 
-// Fecha:
+// Objetivo: Program is in a option state which means that it will display the 
+// word OPTION on the LCD
+// Precondiciones: Program must be in state 0
+// Postcondiciones: R5 will contain 0
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 optionState:
         mov     #0, R5
         call    #displayOption
         bic.b   #06h, &P1IFG
         reti
+
+// Objetivo: Program is in a read state which means that it will display the 
+// word READ on the LCD
+// Precondiciones: Program must be in state 1
+// Postcondiciones: R5 will contain 1
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 readState:
         mov     #1, R5
         call    #displayRead
         bic.b   #06h, &P1IFG
         reti
+
+// Objetivo: Program is in a log state which means that it will display the 
+// word LOG on the LCD
+// Precondiciones: Program must be in state 2
+// Postcondiciones: R5 will contain 2
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 logState:
         mov     #2, R5
         call    #displayLog
         bic.b   #06h, &P1IFG
         reti
-viewReading1State:
+
+// Objetivo: Program is in a viewing log 1 state which means that it will 
+// display the first log located in memory
+// Precondiciones: Program must be in state 3 
+// Postcondiciones: R5 will contain 3, the LCD will display the first log of 
+// the BPM
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
+viewLog1State:
         mov     #3, R5
         call    #records
         bic.b   #06h, &P1IFG
         reti
-viewReading2State:
+
+// Objetivo: Program is in a viewing log 2 state which means that it will 
+// display the second log located in memory
+// Precondiciones: Program must be in state 4 
+// Postcondiciones: R5 will contain 4, the LCD will display the second log of 
+// the BPM
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
+viewLog2State:
         mov     #4, R5
         call    #records
         bic.b   #06h, &P1IFG
         reti
-viewReading3State:
+
+// Objetivo: Program is in a viewing log 3 state which means that it will 
+// display the third log located in memory
+// Precondiciones: Program must be in state 5 
+// Postcondiciones: R5 will contain 5, the LCD will display the third log of 
+// the BPM and the FRAM memory pointer will shift to the begining
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
+viewLog3State:
         mov     #5, R5
         call    #records
         call    #resetMemoryPointer
         bic.b   #06h, &P1IFG
         reti
+
+// Objetivo: Program is in a reading BPM state which means that it will wait for
+// the user to start pressing s1 to count the beats
+// Precondiciones: Program must be in state 6
+// Postcondiciones: R5 will contain 6, FRAM memory address called heartbeat 
+// will contain 0 and LCD will display the edges of the battery
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 readingBPMState:
         mov     #6, R5
         mov     #2, &LCDCMEMCTL          
@@ -243,37 +362,83 @@ readingBPMState:
         mov     #0, heartbeat
         bic.b   #06h, &P1IFG
         reti
+
+// Objetivo: Program is in a counting Beat state which means that it will
+// increment a counter called heartbeat each time s1 is pressed.
+// Precondiciones: Program must be in state 7 and FRAM memory address called 
+// heartbeat must be 0
+// Postcondiciones: FRAM memory address called heartbeat will increment by 1 
+// and R5 will contain 7
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 countBeatState:
         mov     #7, R5
         call    #turnOnHeart
         inc     heartbeat
         cmp     #1, heartbeat
-        jeq     s7StartBatteryCount
+        jeq     s7StartBatteryClock
         bic.b   #06h, &P1IFG
         reti
-s7StartBatteryCount:
+
+// Objetivo: Activates the battery clock
+// Precondiciones: heartbeat must be 1
+// Postcondiciones: timerA0 will be activated and the battery cells will be cleared.
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
+s7StartBatteryClock:
         call    #startTimerA0
         call    #resetBattery
         bic.b   #06h, &P1IFG
         reti 
+
+// Objetivo: Program is in a save state which means that it will ask the user 
+// to save the result or not
+// Precondiciones: Program must be in state 9
+// Postcondiciones: Display the word save on the LCD and R5 will contain 9
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 displaySaveState:
         mov     #9, R5
         call    #displaySave
         bic.b   #06h, &P1IFG
         reti
+
+// Objetivo: Program is in a saving state which means that it will save the 
+// resulting BPM to FRAM memory
+// Precondiciones: FRAM memory address called result must contain the 
+// result of the BPM
+// Postcondiciones: FRAM memory address 0x1980 through 0x1986 will be reorginized
+// and the result will be added to memory address 0x1980
+// Autor: Joshua Cruz, Daniel A. Crespo
+// Fecha: 25/04/2021
 saveBPMState:
         call    #reorganizeData
         mov     result, &0x1980
         mov     #0,R6
         jmp     nextState
 
+// Objetivo: Shift all the date 1 to the right so that the first data in the 
+// list can be re-written.
+// Precondiciones: Must be called when the program is in state 5
+// Postcondiciones: FRAM localization 0x1984 will contain the value in 0x1982
+// and 0x1982 will contain the value in 0x1980
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 reorganizeData:
         mov     &0x1982, &0x1984
         mov     &0x1980, &0x1982
         ret
 
+// Objetivo: When battery full it will calculate the BPM, display it on the LCD
+// and reset the battery back to the initial state. It will also change to the 
+// next state after 30 seconds have passed.
+// Precondiciones: Must be called when battery reaches full
+// Postcondiciones: R13, R14, R15 will contain the value 0, R12 will contain 
+// the seconds that have passed and the display will show the reading that 
+// was calculated every 6 seconds.
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 batteryFull:
-        call    #clearBatteryCells
         add     #6, R12
         call    #calcBPM
         call    #displayResults
@@ -283,12 +448,26 @@ batteryFull:
         bic.b   #06h, &P1IFG
         reti
 
+// Objetivo: Resets the states of the batery back to the begining
+// Precondiciones: Must be called when battery reaches full or when starting 
+// the battery timer for the first time
+// Postcondiciones: R13, R14, R15 will contain the value 0 and the battery 
+// will be empty
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 resetBattery:
+        call    #clearBatteryCells
         mov     #0, R13                 ; Represents the state of the battery
         mov     #0, R14                 ; Represents odd or even
         mov     #0, R15                 ; Represents the position of the list
         ret
 
+// Objetivo: Slows down the execution of the code to help against button bouncing
+// Precondiciones: Must be called every time the button is pressed
+// Postcondiciones: R4 will have its value returned from what it had before 
+// calling this subroutine 
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 delay:
         push.b  R4
         mov     #0x2710, R4
@@ -298,15 +477,32 @@ delay:
         pop     R4
         ret
 
+// Objetivo: Display the readings found in FRAM. Will cycle through 3 values 
+// starting from 0x1980 to 0x1986
+// Precondiciones: FRAM localization 0x1980 through 1986 must contain saved readings
+// Postcondiciones: LCD will display the saved readings based on the state 3, 4, 5
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 records:
         mov     @R8+, R14
         call    #displayResults
         ret
 
+// Objetivo: Adjust the memory pointer to the begining
+// Precondiciones: Program must be in stage 5
+// Postcondiciones: R8 will now contain the beginning address of FRAM (0x1980)
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 resetMemoryPointer:
         mov     #0x1980,R8
         ret
 
+// Objetivo: Llamar al calculo correspondiente basado en los segundos
+// Precondiciones: La localización de memoria encontrado en heartbeat debe 
+// contener la cantidad de palpitos.
+// Postcondiciones: R14 guardará el resultado BPM
+// Autor: Abdiel Cortés Cortés
+// Fecha: 24/abril/2021
 calcBPM:
         mov     &heartbeat, R14
         cmp     #6, R12
@@ -320,22 +516,35 @@ calcBPM:
         cmp     #30, R12
         jeq     calcBPM30
 
-// Assuming heart beats are stored in R14
-// BPM result is stored in R14
+// Objetivo: Calcula el BPM despues que transcurrieron 6 segundos
+// Precondiciones: La cantidad de heart beats se encuentra almacenada en R14
+// Postcondiciones: El valor de BPM se encuentra almacenado en R14
+// Autor: Abdiel Cortés Cortés
+// Fecha: 24/abril/2021
 calcBPM6:
         push.w  R15                     ; Save value of R15 in stack
         mov     #10, R15                ; 6 seconds is 1/10 of a minute
         call    #mulNumbers             ; Multiply heart beats by 10 to calculate BPM
         pop.w   R15                     ; Recover value of R15 from stack
         ret
-        
+
+// Objetivo: Calcula el BPM despues que transcurrieron 12 segundos
+// Precondiciones: La cantidad de heart beats se encuentra almacenada en R14
+// Postcondiciones: El valor de BPM se encuentra almacenado en R14
+// Autor: Abdiel Cortés Cortés
+// Fecha: 24/abril/2021
 calcBPM12:
         push.w  R15                     ; Save value of R15 in stack
         mov     #5, R15                 ; 12 seconds is 1/5 of a minute
         call    #mulNumbers             ; Multiply heart beats by 5 to calculate BPM
         pop.w   R15                     ; Recover value of R15 from stack
         ret
-        
+
+// Objetivo: Calcula el BPM despues que transcurrieron 18 segundos
+// Precondiciones: La cantidad de heart beats se encuentra almacenada en R14
+// Postcondiciones: El valor de BPM se encuentra almacenado en R14
+// Autor: Abdiel Cortés Cortés
+// Fecha: 24/abril/2021
 calcBPM18:
         push.w  R15                     ; Save value of R15 in stack
         mov     #10, R15                ; 18 seconds is 3/10 of a minute
@@ -345,6 +554,11 @@ calcBPM18:
         pop.w   R15                     ; Recover value of R15 from stack
         ret
 
+// Objetivo: Calcula el BPM despues que transcurrieron 24 segundos
+// Precondiciones: La cantidad de heart beats se encuentra almacenada en R14
+// Postcondiciones: El valor de BPM se encuentra almacenado en R14
+// Autor: Abdiel Cortés Cortés
+// Fecha: 24/abril/2021
 calcBPM24:
         push.w  R15                     ; Save value of R15 in stack
         mov     #25, R15                ; 24 seconds is 2/5 = 1/2.5 of a second
@@ -354,6 +568,11 @@ calcBPM24:
         pop.w   R15                     ; Recover value of R15 from stack
         ret
 
+// Objetivo: Calcula el BPM despues que transcurrieron 30 segundos
+// Precondiciones: La cantidad de heart beats se encuentra almacenada en R14
+// Postcondiciones: El valor de BPM se encuentra almacenado en R14
+// Autor: Abdiel Cortés Cortés
+// Fecha: 24/abril/2021
 calcBPM30:
         push.w  R15                     ; Save value of R15 in stack
         mov     #2, R15                 ; 30 seconds is 1/2 of a second
@@ -402,7 +621,7 @@ mulNumbers:                             ; Operation for multiplying 2 numbers
 // Precondiciones: R14 contiene el número menor
 // Postcondiciones: R14 contiene el número mayor
 // Autor: Joshua Cruz Cintrón
-// Fecha: 14/marzo/2021
+// Fecha: 24/abril/2021
 multSwitchNumbers:                      ; Invert the data on both R14 and R15
         push.w   R15                    ; Pushed to the stack so we dont 
                                         ; override the data
@@ -441,16 +660,16 @@ divNumbers:                             ; Operation for dividing 2 numbers
         mov     #0, R5                  ; Put 0 in R5, which will later be saved in R14
         jmp     divEnd
 
-// Objetivo: Seperate the result found on both R14 and R15 into individual digits
-// Precondiciones: Some value has to be stored at least in R14, R12 is needed 
-// as a counter for digits, R11 is needed as a count for how many are in the
-// stack, R9 is needed for saving the seperated digit from result, R4 is needed
-// for subtracting the result by the specified tens
+// Objetivo: Seperate the result found in R14 into individual digits
+// Precondiciones: Value has to be stored in R14, R12 is needed 
+// as a counter for digits to seperate, R11 is needed as a counter for how many 
+// digits are in the stack, R9 is needed for saving the seperated digit from 
+// result, R4 is needed for subtracting the result by the specified tens
 // Postcondiciones: R9, R10, R11 will house a seperate digit from least to most
-// significant digits. R12, R14, R15 will end up with trash data valued 0. 
-// R4 will end up with trash data valued 10.
+// significant digits. R4, R12, R14, will not lose the previous values they had 
+// before calling this subroutine. 
 // Autor: Daniel A. Crespo 
-// Fecha:15/Mar/202
+// Fecha: 24/04/2021
 seperateDigits:                         ; Subroutine used for seperating the 
         push.w  R4                      ; results found in R14 and R15 (if any) 
         push.w  R12
@@ -509,15 +728,16 @@ seperateDigits:                         ; Subroutine used for seperating the
         pop.w   R14
         pop.w   R12
         pop.w   R4
+       ;Revert changes from these registers
         ret
 
-// Objetivo: Print out the values stored in R9, R10, R11
+// Objetivo: Print out the result of the readings
 // Precondiciones: R9, R10, R11 represents the digits to print out
 // Postcondiciones: Display will show the results on the first 3 segments then 
-// the word BPM on the last 3 segments.
+// the word BPM on the last 3 segments. Left ceros will not be displayed.
 // Autor: Daniel A. Crespo
-// Fecha: 14/03/21
-displayResults:                         ; Subroutine used for displaying the results
+// Fecha: 24/04/2021
+displayResults:
         call    #seperateDigits
         call    #clearPrevResult
         push.w  R9
@@ -570,6 +790,11 @@ displayResults:                         ; Subroutine used for displaying the res
         call    #displayBPM
         ret
 
+// Objetivo: Delet the previous result from the LCD
+// Precondiciones: Must be called when displaying results
+// Postcondiciones: The first 3 segments will not display anything
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 clearPrevResult:
         bic.b   #11111111B, &0x0A29      
         bic.b   #11111111B, &0x0A29+1
@@ -583,7 +808,7 @@ clearPrevResult:
 // Precondiciones: R9 contains the position of the number that should be displayed
 // Postcondiciones: LCD will display a number at the first segment
 // Autor: Rey J. Cotto
-// Fecha: Apr/17/2021
+// Fecha: 24/04/2021
 displayFirstSegment:                    
         mov.b   digitH(R9), &0x0A29      
         mov.b   digitL(R9), &0x0A29+1
@@ -593,7 +818,7 @@ displayFirstSegment:
 // Precondiciones: R9 contains the position of the number that should be displayed
 // Postcondiciones: LCD will display a number at the second segment
 // Autor: Rey J. Cotto
-// Fecha: Apr/17/2021
+// Fecha: 24/04/2021
 displaySecondSegment:                   
         mov.b   digitH(R9), &0x0A25      
         mov.b   digitL(R9), &0x0A25+1
@@ -603,7 +828,7 @@ displaySecondSegment:
 // Precondiciones: R9 contains the position of the number that should be displayed
 // Postcondiciones: LCD will display a number at the third segment
 // Autor: Rey J. Cotto
-// Fecha: Apr/17/2021
+// Fecha: 24/04/2021
 displayThirdSegment:                    
         mov.b   digitH(R9), &0x0A23      
         mov.b   digitL(R9), &0x0A23+1
@@ -648,7 +873,7 @@ displayRead:
         ret
 
 // Objetivo: Display the word "LOG" on the LCD Display
-// Precondiciones: Program must be in stage 2
+// Precondiciones: Program must be in stage 3
 // Postcondiciones: LCD will display "LOG" on the LCD Display
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
@@ -663,7 +888,7 @@ displayLog:
         ret
 
 // Objetivo: Display the word "BPM" on the LCD Display
-// Precondiciones: Program must be in stage 2
+// Precondiciones: Must be called when displaying a result
 // Postcondiciones: LCD will display "BPM" on the LCD Display
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
@@ -677,8 +902,8 @@ displayBPM:
         ret
 
 // Objetivo: Display the word "SAVE" on the LCD Display
-// Precondiciones: Program must be in stage 2
-// Postcondiciones: LCD will display "BPM" on the LCD Display
+// Precondiciones: Program must be in stage 8
+// Postcondiciones: LCD will display "SAVE" on the LCD Display
 // Autor: Rey J. Cotto
 // Fecha: 24/04/2021
 displaySave:
@@ -693,6 +918,11 @@ displaySave:
         mov.b   #0x00, &0X0a33  ;E-L
         ret
 
+// Objetivo: Clears the battery cells from the display
+// Precondiciones: Must be called when battery reaches full
+// Postcondiciones: LCD will not display any battery cells
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 clearBatteryCells:
         bic.b   #00100000B,&0x0A31      ; cell 1
         bic.b   #00100000B,&0x0A2D      ; cell 2
@@ -701,7 +931,12 @@ clearBatteryCells:
         bic.b   #10000000B,&0x0A31      ; cell 5
         bic.b   #10000000B,&0x0A2D      ; cell 6
         ret
-
+        
+// Objetivo: Displays the edges of the battery
+// Precondiciones: Program must be in stage 6
+// Postcondiciones: LCD will display the edges of the battery
+// Autor: Daniel A. Crespo
+// Fecha: 25/04/2021
 edgeOfBattery:
         mov.b   #00010000B, &0x0A31     ; Turn on edge of batery
         ret
